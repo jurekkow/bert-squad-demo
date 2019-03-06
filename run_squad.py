@@ -765,7 +765,8 @@ def _compute_softmax(scores):
         probs.append(score / total_sum)
     return probs
 
-def main():
+
+def create_argument_parser():
     parser = argparse.ArgumentParser()
 
     ## Required parameters
@@ -839,8 +840,10 @@ def main():
     parser.add_argument('--null_score_diff_threshold',
                         type=float, default=0.0,
                         help="If null_score - best_non_null is greater than the threshold predict null.")
-    args = parser.parse_args()
+    return parser
 
+
+def prepare_model(args):
     if args.local_rank == -1 or args.no_cuda:
         device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
         n_gpu = torch.cuda.device_count()
@@ -872,10 +875,6 @@ def main():
         if not args.train_file:
             raise ValueError(
                 "If `do_train` is True, then `train_file` must be specified.")
-    if args.do_predict:
-        if not args.predict_file:
-            raise ValueError(
-                "If `do_predict` is True, then `predict_file` must be specified.")
 
     if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
         raise ValueError("Output directory () already exists and is not empty.")
@@ -954,7 +953,6 @@ def main():
     if args.do_train:
         cached_train_features_file = args.train_file+'_{0}_{1}_{2}_{3}'.format(
             list(filter(None, args.bert_model.split('/'))).pop(), str(args.max_seq_length), str(args.doc_stride), str(args.max_query_length))
-        train_features = None
         try:
             with open(cached_train_features_file, "rb") as reader:
                 train_features = pickle.load(reader)
@@ -1035,10 +1033,21 @@ def main():
         )
 
     model.to(device)
+    return model, tokenizer, device
 
+
+def read_squad_examples_from_file(args):
+    if not args.predict_file:
+        raise ValueError('predict_file must be specified to read examples from file')
+    return read_squad_examples(
+        input_file=args.predict_file,
+        is_training=False,
+        version_2_with_negative=args.version_2_with_negative
+    )
+
+
+def predict(eval_examples, model, tokenizer, device, args):
     if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        eval_examples = read_squad_examples(
-            input_file=args.predict_file, is_training=False, version_2_with_negative=args.version_2_with_negative)
         eval_features = convert_examples_to_features(
             examples=eval_examples,
             tokenizer=tokenizer,
@@ -1080,6 +1089,12 @@ def main():
                 all_results.append(RawResult(unique_id=unique_id,
                                              start_logits=start_logits,
                                              end_logits=end_logits))
+                return eval_examples, eval_features, all_results
+    return None
+
+
+def save_predictions(eval_examples, eval_features, all_results, args):
+    if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         output_prediction_file = os.path.join(args.output_dir, "predictions.json")
         output_nbest_file = os.path.join(args.output_dir, "nbest_predictions.json")
         output_null_log_odds_file = os.path.join(args.output_dir, "null_odds.json")
@@ -1088,6 +1103,15 @@ def main():
                           args.do_lower_case, output_prediction_file,
                           output_nbest_file, output_null_log_odds_file, args.verbose_logging,
                           args.version_2_with_negative, args.null_score_diff_threshold)
+
+
+def main():
+    parser = create_argument_parser()
+    args = parser.parse_args()
+    model, tokenizer, device = prepare_model(args)
+    eval_examples = read_squad_examples_from_file(args)
+    eval_examples, eval_features, all_results = predict(eval_examples, model, tokenizer, device, args)
+    save_predictions(eval_examples, eval_features, all_results, args)
 
 
 if __name__ == "__main__":
