@@ -1,9 +1,19 @@
 {
   "examples": [
     {
-      "context": "Ann was born in London, but she moved to Manchester recently.",
+      "context": "Ann was born in London, but she moved to Manchester recently. She visited France last year.",
       "question": "Where does Ann live?",
       "expected_answer": "Manchester"
+    },
+    {
+      "context": "My mom bakes best cookies ever. She never adds sugar. Her secret ingredient is maple syrup",
+      "question": "What are my mom's cookies made from?",
+      "expected_answer": "maple syrup"
+    },
+    {
+      "context": "I met Thomas in 2006. We started our start-up in 2010.",
+      "question": "When our company was initiated?",
+      "expected_answer": "2010"
     }
   ]
 }
