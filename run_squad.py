@@ -1135,7 +1135,7 @@ def save_predictions(all_predictions, all_nbest_json, scores_diff_json, args):
                           output_nbest_file, output_null_log_odds_file, args.version_2_with_negative)
 
 
-def answer_question(context, question):
+def load_default_prediction_model():
     parser = create_argument_parser()
     args = parser.parse_args([
         '--bert_model', 'model',
@@ -1144,8 +1144,17 @@ def answer_question(context, question):
         '--no_cuda',
     ])
     model, tokenizer, device = prepare_model(args)
+    return {
+        'model': model,
+        'tokenizer': tokenizer,
+        'device': device,
+        'args': args
+    }
+
+
+def answer_question(context, question, model):
     eval_examples = prepare_squad_examples(context, question)
-    all_predictions, _, _ = predict(eval_examples, model, tokenizer, device, args)
+    all_predictions, _, _ = predict(eval_examples, **model)
     return all_predictions['answer']
 
 
