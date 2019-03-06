@@ -124,11 +124,8 @@ class InputFeatures(object):
         self.is_impossible = is_impossible
 
 
-def read_squad_examples(input_file, is_training, version_2_with_negative):
-    """Read a SQuAD json file into a list of SquadExample."""
-    with open(input_file, "r", encoding='utf-8') as reader:
-        input_data = json.load(reader)["data"]
-
+def read_squad_examples(input_data, is_training, version_2_with_negative):
+    """Read a SQuAD input data into a list of SquadExample."""
     def is_whitespace(c):
         if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
             return True
@@ -443,14 +440,9 @@ RawResult = collections.namedtuple("RawResult",
                                    ["unique_id", "start_logits", "end_logits"])
 
 
-def write_predictions(all_examples, all_features, all_results, n_best_size,
-                      max_answer_length, do_lower_case, output_prediction_file,
-                      output_nbest_file, output_null_log_odds_file, verbose_logging,
+def parse_predictions(all_examples, all_features, all_results, n_best_size,
+                      max_answer_length, do_lower_case, verbose_logging,
                       version_2_with_negative, null_score_diff_threshold):
-    """Write final predictions to the json file and log-odds of null if needed."""
-    logger.info("Writing predictions to: %s" % (output_prediction_file))
-    logger.info("Writing nbest to: %s" % (output_nbest_file))
-
     example_index_to_features = collections.defaultdict(list)
     for feature in all_features:
         example_index_to_features[feature.example_index].append(feature)
@@ -623,6 +615,16 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
             else:
                 all_predictions[example.qas_id] = best_non_null_entry.text
                 all_nbest_json[example.qas_id] = nbest_json
+
+    return all_predictions, all_nbest_json, scores_diff_json
+
+
+def write_predictions(all_predictions, all_nbest_json, scores_diff_json, output_prediction_file,
+                      output_nbest_file, output_null_log_odds_file, version_2_with_negative):
+    """Write final predictions to the json file and log-odds of null if needed."""
+
+    logger.info("Writing predictions to: %s" % (output_prediction_file))
+    logger.info("Writing nbest to: %s" % (output_nbest_file))
 
     with open(output_prediction_file, "w") as writer:
         writer.write(json.dumps(all_predictions, indent=4) + "\n")
@@ -887,8 +889,10 @@ def prepare_model(args):
     train_examples = None
     num_train_optimization_steps = None
     if args.do_train:
+        with open(args.train_file, "r", encoding='utf-8') as reader:
+            input_data = json.load(reader)["data"]
         train_examples = read_squad_examples(
-            input_file=args.train_file, is_training=True, version_2_with_negative=args.version_2_with_negative)
+            input_data=input_data, is_training=True, version_2_with_negative=args.version_2_with_negative)
         num_train_optimization_steps = int(
             len(train_examples) / args.train_batch_size / args.gradient_accumulation_steps) * args.num_train_epochs
         if args.local_rank != -1:
@@ -1040,10 +1044,36 @@ def prepare_model(args):
 def read_squad_examples_from_file(args):
     if not args.predict_file:
         raise ValueError('predict_file must be specified to read examples from file')
+    with open(args.predict_file, "r", encoding='utf-8') as reader:
+        input_data = json.load(reader)["data"]
     return read_squad_examples(
-        input_file=args.predict_file,
+        input_data=input_data,
         is_training=False,
         version_2_with_negative=args.version_2_with_negative
+    )
+
+
+def prepare_squad_examples(context, question):
+    """Mimics reading question from SQuAD json given context and answer"""
+    input_data = [
+        {
+            'paragraphs': [
+                {
+                    'context': context,
+                    'qas': [
+                        {
+                            'question': question,
+                            'id': 'answer'
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+    return read_squad_examples(
+        input_data=input_data,
+        is_training=False,
+        version_2_with_negative=False
     )
 
 
@@ -1090,20 +1120,33 @@ def predict(eval_examples, model, tokenizer, device, args):
                 all_results.append(RawResult(unique_id=unique_id,
                                              start_logits=start_logits,
                                              end_logits=end_logits))
-                return eval_examples, eval_features, all_results
+        return parse_predictions(eval_examples, eval_features, all_results, args.n_best_size,
+                                 args.max_answer_length, args.do_lower_case, args.verbose_logging,
+                                 args.version_2_with_negative, args.null_score_diff_threshold)
     return None
 
 
-def save_predictions(eval_examples, eval_features, all_results, args):
+def save_predictions(all_predictions, all_nbest_json, scores_diff_json, args):
     if args.do_predict and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         output_prediction_file = os.path.join(args.output_dir, "predictions.json")
         output_nbest_file = os.path.join(args.output_dir, "nbest_predictions.json")
         output_null_log_odds_file = os.path.join(args.output_dir, "null_odds.json")
-        write_predictions(eval_examples, eval_features, all_results,
-                          args.n_best_size, args.max_answer_length,
-                          args.do_lower_case, output_prediction_file,
-                          output_nbest_file, output_null_log_odds_file, args.verbose_logging,
-                          args.version_2_with_negative, args.null_score_diff_threshold)
+        write_predictions(all_predictions, all_nbest_json, scores_diff_json, output_prediction_file,
+                          output_nbest_file, output_null_log_odds_file, args.version_2_with_negative)
+
+
+def answer_question(context, question):
+    parser = create_argument_parser()
+    args = parser.parse_args([
+        '--bert_model', 'model',
+        '--do_predict',
+        '--do_lower_case',
+        '--no_cuda',
+    ])
+    model, tokenizer, device = prepare_model(args)
+    eval_examples = prepare_squad_examples(context, question)
+    all_predictions, _, _ = predict(eval_examples, model, tokenizer, device, args)
+    return all_predictions['answer']
 
 
 def main():
@@ -1111,8 +1154,8 @@ def main():
     args = parser.parse_args()
     model, tokenizer, device = prepare_model(args)
     eval_examples = read_squad_examples_from_file(args)
-    eval_examples, eval_features, all_results = predict(eval_examples, model, tokenizer, device, args)
-    save_predictions(eval_examples, eval_features, all_results, args)
+    all_predictions, all_nbest_json, scores_diff_json = predict(eval_examples, model, tokenizer, device, args)
+    save_predictions(all_predictions, all_nbest_json, scores_diff_json, args)
 
 
 if __name__ == "__main__":
