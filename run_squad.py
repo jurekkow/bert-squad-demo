@@ -774,10 +774,10 @@ def create_argument_parser():
                         help="Bert pre-trained model selected in the list: bert-base-uncased, "
                         "bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, "
                         "bert-base-multilingual-cased, bert-base-chinese.")
-    parser.add_argument("--output_dir", default=None, type=str, required=True,
-                        help="The output directory where the model checkpoints and predictions will be written.")
 
     ## Other parameters
+    parser.add_argument("--output_dir", default=None, type=str,
+                        help="The output directory where the model checkpoints and predictions will be written.")
     parser.add_argument("--train_file", default=None, type=str, help="SQuAD json for training. E.g., train-v1.1.json")
     parser.add_argument("--predict_file", default=None, type=str,
                         help="SQuAD json for predictions. E.g., dev-v1.1.json or test-v1.1.json")
@@ -876,10 +876,11 @@ def prepare_model(args):
             raise ValueError(
                 "If `do_train` is True, then `train_file` must be specified.")
 
-    if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
-        raise ValueError("Output directory () already exists and is not empty.")
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
+    if args.output_dir:
+        if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
+            raise ValueError("Output directory () already exists and is not empty.")
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
 
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=args.do_lower_case)
 
