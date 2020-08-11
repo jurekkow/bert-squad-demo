@@ -1,3 +1,17 @@
+First, let's create a conda evvironment called `lang`, then we can follow the rest of instructiosn for the demo as outlined in the README.
+
+# To activate this environment, use
+#
+#     $ conda activate lang
+#
+# To deactivate an active environment, use
+#
+#     $ conda deactivate
+
+`unset PYTHONPATH`
+
+`pip install -r requirements.txt`
+
 # bert-squad-demo
 Demo web server app that shows how BERT model trained on SQuAD dataset deals with the machine
 comprehension task.
