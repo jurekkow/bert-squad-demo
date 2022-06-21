@@ -10,7 +10,7 @@ itsdangerous==1.1.0
 Jinja2==2.10
 jmespath==0.9.3
 MarkupSafe==1.1.1
-numpy==1.16.1
+numpy==1.22.0
 Pillow==5.4.1
 python-dateutil==2.7.5
 pytorch-pretrained-bert==0.4.0
