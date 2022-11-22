@@ -11,7 +11,7 @@ Jinja2==2.10
 jmespath==0.9.3
 MarkupSafe==1.1.1
 numpy==1.16.1
-Pillow==5.4.1
+Pillow==9.3.0
 python-dateutil==2.7.5
 pytorch-pretrained-bert==0.4.0
 requests==2.21.0
